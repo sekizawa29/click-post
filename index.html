@@ -304,6 +304,26 @@
             showStatus('outputStatus', `${fileName} をダウンロードしました（UTF-8形式）`, 'success');
         }
         
+        // HTMLファイルをダウンロードする機能を追加
+        function downloadHTML() {
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            
+            const now = new Date();
+            const fileName = `clickpost-tool_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.html`;
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            alert('HTMLファイルをダウンロードしました！GitHubにアップロードしてください。');
+        }
+        
         function copyToClipboard() {
             const csvOutput = document.getElementById('csvOutput');
             if (!csvOutput.value) {
@@ -337,28 +357,9 @@
             }, 3000);
         }
         
-        // サンプルデータの自動入力
+        // 初期値は空に設定
         window.onload = function() {
-            const sampleData = `123-4567
-東京都
-千代田区霞が関
-１丁目２番３号
-サンプルマンション 101
-山田太郎
-
-987-6543
-大阪府
-大阪市北区梅田9-99-99
-テストビル 999
-鈴木花子
-
-111-2222
-神奈川県
-横浜市西区みなとみらい8-88
-架空タワー 2020
-佐藤次郎`;
-            
-            document.getElementById('inputData').value = sampleData;
+            document.getElementById('inputData').value = '';
         }
     </script>
 </body>
