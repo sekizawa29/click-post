@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>クリックポスト住所変換ツール</title>
+    <!-- Encoding.js ライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.0.0/encoding.min.js"></script>
+    <style>
+        body {
+            font-family: 'メイリオ', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #ff6b6b;
+            padding-bottom: 10px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .input-section, .output-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        textarea {
+            width: 100%;
+            height: 300px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        textarea::placeholder {
+            color: #999;
+            opacity: 1;
+        }
+        button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #ff5252;
+        }
+        .copy-btn {
+            background: #4CAF50;
+        }
+        .copy-btn:hover {
+            background: #45a049;
+        }
+        .download-btn {
+            background: #2196F3;
+        }
+        .download-btn:hover {
+            background: #0b7dda;
+        }
+        .clear-btn {
+            background: #666;
+        }
+        .clear-btn:hover {
+            background: #555;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            font-size: 12px;
+        }
+        th {
+            background: #f0f0f0;
+            font-weight: bold;
+        }
+        .instructions {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        #csvOutput {
+            white-space: pre;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 クリックポスト住所変換ツール</h1>
+    
+    <div class="instructions">
+        <strong>使い方：</strong>
+        <ol>
+            <li>左側のテキストエリアに住所データをコピペ（複数件可）</li>
+            <li>「変換する」ボタンをクリック</li>
+            <li>右側に表示されたCSVデータをコピー</li>
+            <li>エクセルに貼り付けて、CSV形式で保存</li>
+        </ol>
+        <strong>注意：</strong>郵便番号の後は改行、名前は最後の行に配置してください
+    </div>
+    
+    <div class="container">
+        <div class="input-section">
+            <h2>入力データ</h2>
+            <textarea id="inputData" placeholder="例：
+123-4567
+東京都
+千代田区霞が関
+１丁目２番３号
+サンプルマンション 101
+山田太郎
+
+987-6543
+大阪府
+大阪市北区梅田9-99-99
+テストビル 999
+鈴木花子"></textarea>
+            <button onclick="convertData()">変換する</button>
+            <button class="clear-btn" onclick="clearInput()">クリア</button>
+            <div id="inputStatus" class="status"></div>
+        </div>
+        
+        <div class="output-section">
+            <h2>クリックポスト用CSV</h2>
+            <textarea id="csvOutput" readonly></textarea>
+            <button class="copy-btn" onclick="copyToClipboard()">CSVをコピー</button>
+            <button class="download-btn" onclick="downloadCSV()">CSVダウンロード（Shift-JIS）</button>
+            <button class="download-btn" style="background:#FF9800" onclick="downloadCSVWithBOM()">CSVダウンロード（UTF-8）</button>
+            <button class="clear-btn" onclick="clearOutput()">クリア</button>
+            <div id="outputStatus" class="status"></div>
+        </div>
+    </div>
+    
+    <div style="margin-top: 20px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h2>変換結果プレビュー</h2>
+        <div id="previewTable"></div>
+    </div>
+
+    <script>
+        let globalCsvData = ''; // CSVデータを保存
+        
+        function convertData() {
+            const input = document.getElementById('inputData').value.trim();
+            if (!input) {
+                showStatus('inputStatus', 'データを入力してください', 'error');
+                return;
+            }
+            
+            // 空行で各住所を分割
+            const addresses = input.split(/\n\s*\n/).filter(addr => addr.trim());
+            
+            let csvData = 'お届け先郵便番号,お届け先氏名,お届け先敬称,お届け先住所1行目,お届け先住所2行目,お届け先住所3行目,お届け先住所4行目,内容品\n';
+            let tableHTML = '<table><tr><th>郵便番号</th><th>氏名</th><th>敬称</th><th>住所1</th><th>住所2</th><th>住所3</th><th>住所4</th><th>内容品</th></tr>';
+            
+            addresses.forEach(address => {
+                const lines = address.split('\n').filter(line => line.trim());
+                if (lines.length < 2) return;
+                
+                // 郵便番号（ハイフン除去）
+                const postalCode = lines[0].replace(/-/g, '').trim();
+                
+                // 最後の行が氏名
+                const name = lines[lines.length - 1].trim();
+                
+                // 住所行の処理
+                const addressLines = lines.slice(1, -1);
+                let addr1 = '', addr2 = '', addr3 = '', addr4 = '';
+                
+                // 都道府県を識別
+                const prefecturePattern = /(東京都|北海道|(?:京都|大阪)府|(?:神奈川|埼玉|千葉|兵庫|愛知|福岡|広島|宮城|新潟|静岡|岡山|熊本|鹿児島|沖縄|青森|岩手|秋田|山形|福島|茨城|栃木|群馬|山梨|長野|富山|石川|福井|岐阜|三重|滋賀|奈良|和歌山|鳥取|島根|山口|徳島|香川|愛媛|高知|佐賀|長崎|大分|宮崎)県)/;
+                
+                let addressIndex = 0;
+                addressLines.forEach((line, index) => {
+                    if (index === 0 && prefecturePattern.test(line)) {
+                        // 都道府県行
+                        addr1 = line.trim();
+                    } else if (index === 1 && (line.includes('市') || line.includes('区') || line.includes('町') || line.includes('村'))) {
+                        // 市区町村行
+                        if (addr1 && !addr1.includes('市') && !addr1.includes('区')) {
+                            addr1 += line.trim();
+                        } else {
+                            addr2 = line.trim();
+                        }
+                    } else {
+                        // その他の住所行
+                        if (!addr2) addr2 = line.trim();
+                        else if (!addr3) addr3 = line.trim();
+                        else if (!addr4) addr4 = line.trim();
+                        else addr4 += ' ' + line.trim(); // 4行目以降は結合
+                    }
+                });
+                
+                // CSV行を作成
+                const csvLine = `${postalCode},${name},様,${addr1},${addr2},${addr3},${addr4},雑貨`;
+                csvData += csvLine + '\n';
+                
+                // テーブル行を作成
+                tableHTML += `<tr><td>${postalCode}</td><td>${name}</td><td>様</td><td>${addr1}</td><td>${addr2}</td><td>${addr3}</td><td>${addr4}</td><td>雑貨</td></tr>`;
+            });
+            
+            tableHTML += '</table>';
+            
+            globalCsvData = csvData; // グローバル変数に保存
+            document.getElementById('csvOutput').value = csvData;
+            document.getElementById('previewTable').innerHTML = tableHTML;
+            
+            showStatus('outputStatus', `${addresses.length}件のデータを変換しました`, 'success');
+        }
+        
+        // 文字列をShift-JISに変換する関数
+        function toShiftJIS(str) {
+            // Encoding.jsライブラリを使用
+            const unicodeArray = [];
+            for (let i = 0; i < str.length; i++) {
+                unicodeArray.push(str.charCodeAt(i));
+            }
+            return Encoding.convert(unicodeArray, 'SJIS', 'UNICODE');
+        }
+        
+        function downloadCSV() {
+            if (!globalCsvData) {
+                showStatus('outputStatus', 'ダウンロードするデータがありません', 'error');
+                return;
+            }
+            
+            try {
+                // Shift-JISに変換
+                const sjisArray = toShiftJIS(globalCsvData);
+                const uint8Array = new Uint8Array(sjisArray);
+                const blob = new Blob([uint8Array], { type: 'text/csv;charset=Shift_JIS' });
+                
+                // 現在の日時でファイル名を生成
+                const now = new Date();
+                const fileName = `clickpost_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.csv`;
+                
+                // ダウンロードリンクを作成
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showStatus('outputStatus', `${fileName} をダウンロードしました（Shift-JIS形式）`, 'success');
+            } catch (error) {
+                console.error('エラー:', error);
+                // フォールバック：UTF-8 with BOM
+                downloadCSVWithBOM();
+            }
+        }
+        
+        function downloadCSVWithBOM() {
+            // UTF-8 BOM付きでダウンロード（フォールバック）
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, globalCsvData], { type: 'text/csv;charset=utf-8' });
+            
+            const now = new Date();
+            const fileName = `clickpost_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}_utf8.csv`;
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showStatus('outputStatus', `${fileName} をダウンロードしました（UTF-8形式）`, 'success');
+        }
+        
+        function copyToClipboard() {
+            const csvOutput = document.getElementById('csvOutput');
+            if (!csvOutput.value) {
+                showStatus('outputStatus', 'コピーするデータがありません', 'error');
+                return;
+            }
+            
+            csvOutput.select();
+            document.execCommand('copy');
+            showStatus('outputStatus', 'クリップボードにコピーしました！', 'success');
+        }
+        
+        function clearInput() {
+            document.getElementById('inputData').value = '';
+            document.getElementById('inputStatus').style.display = 'none';
+        }
+        
+        function clearOutput() {
+            document.getElementById('csvOutput').value = '';
+            document.getElementById('previewTable').innerHTML = '';
+            document.getElementById('outputStatus').style.display = 'none';
+        }
+        
+        function showStatus(elementId, message, type) {
+            const statusElement = document.getElementById(elementId);
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+            
+            setTimeout(() => {
+                statusElement.style.display = 'none';
+            }, 3000);
+        }
+        
+        // サンプルデータの自動入力
+        window.onload = function() {
+            const sampleData = `123-4567
+東京都
+千代田区霞が関
+１丁目２番３号
+サンプルマンション 101
+山田太郎
+
+987-6543
+大阪府
+大阪市北区梅田9-99-99
+テストビル 999
+鈴木花子
+
+111-2222
+神奈川県
+横浜市西区みなとみらい8-88
+架空タワー 2020
+佐藤次郎`;
+            
+            document.getElementById('inputData').value = sampleData;
+        }
+    </script>
+</body>
+</html>
